@@ -218,4 +218,4 @@ python app.py
 
 <hr>
 
-<h2 align="center">✨ Developed by Dikshita ✨</h2>
+<h2 align="center"> - Dikshita Pimpale</h2>
