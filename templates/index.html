@@ -829,7 +829,7 @@ function renderHistory(history, container) {
     let historyHtml = '<div style="display:flex;flex-direction:column;gap:16px;">';
     
     for (const record of history) {
-        const date = new Date(record.created_at).toLocaleString(undefined, {
+        const date = new Date(record.created_at.replace(' ', 'T')).toLocaleString(undefined, {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -914,7 +914,7 @@ async function viewHistoryDetails(historyId) {
             currentMode = originalMode;
             
             // Show a toast notification
-            showToast(`Showing prediction from ${new Date(record.created_at).toLocaleString(undefined, {
+            showToast(`Showing prediction from ${new Date(record.created_at.replace(' ', 'T')).toLocaleString(undefined, {
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
