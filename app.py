@@ -1,31 +1,132 @@
-import os, json, pickle
+import os, json, pickle, hashlib, secrets
 import numpy as np
 import torch
 import torch.nn as nn
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
 from transformers import BertTokenizer, BertModel
 from huggingface_hub import hf_hub_download
+import sqlite3
+from functools import wraps
+from datetime import timedelta
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.permanent_session_lifetime = timedelta(hours=8)
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ✅ ADDED: Auto-download logic
+# ─── Database ──────────────────────────────────────────────────────────────
+DB_PATH = os.environ.get("DB_PATH", "careerlens.db")
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    """Create users table if it doesn't exist."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                username  TEXT    NOT NULL UNIQUE,
+                email     TEXT    NOT NULL UNIQUE,
+                password  TEXT    NOT NULL,
+                salt      TEXT    NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+    print("[DB] ✅ Database initialised.")
+
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                username  TEXT    NOT NULL UNIQUE,
+                email     TEXT    NOT NULL UNIQUE,
+                password  TEXT    NOT NULL,
+                salt      TEXT    NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # NEW TABLE: Prediction history
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_history (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL,
+                mode          TEXT NOT NULL,
+                input_data    TEXT NOT NULL,
+                result_data   TEXT NOT NULL,
+                created_at    DATETIME DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
+        conn.commit()
+
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.sha256((salt + password).encode()).hexdigest()
+
+def create_user(username: str, email: str, password: str):
+    salt = secrets.token_hex(16)
+    hashed = hash_password(password, salt)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO users (username, email, password, salt) VALUES (?, ?, ?, ?)",
+            (username.strip(), email.strip().lower(), hashed, salt)
+        )
+        conn.commit()
+
+def verify_user(username_or_email: str, password: str):
+    """Returns the user row if credentials are valid, else None."""
+    with get_db() as conn:
+        user = conn.execute(
+            "SELECT * FROM users WHERE username = ? OR email = ?",
+            (username_or_email, username_or_email.lower())
+        ).fetchone()
+    if not user:
+        return None
+    if hash_password(password, user["salt"]) == user["password"]:
+        return user
+    return None
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            # For API routes return JSON, for page routes redirect
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Authentication required"}), 401
+            return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+def save_prediction_to_history(user_id: int, mode: str, input_data: dict, result_data: dict):
+    """Save a prediction to the user's history."""
+    import json
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO prediction_history (user_id, mode, input_data, result_data) VALUES (?, ?, ?, ?)",
+            (user_id, mode, json.dumps(input_data), json.dumps(result_data))
+        )
+        conn.commit()
+
+#Auto-download logic 
 MODEL_FILENAME = "placement_model_best.pt"
 
 def get_model_path():
     if os.path.exists(MODEL_FILENAME):
         print("✅ Model found locally")
         return MODEL_FILENAME
-
     print("⬇️ Model not found. Downloading from Hugging Face...")
-
     model_path = hf_hub_download(
         repo_id="DikshitaP/student-placement-model",
         filename=MODEL_FILENAME,
-        local_dir=".",  
+        local_dir=".",
         local_dir_use_symlinks=False
     )
-
     print("✅ Model downloaded successfully")
     return model_path
 
@@ -83,7 +184,7 @@ KNOWN_COMPANIES = {
     "ongc":        {"tier": "PSU/Research",       "domain": "Oil & Gas",           "min_cgpa": 6.5, "min_intern": 0, "min_proj": 1, "min_comm": 5, "skills": ["Petroleum Engineering","Geology","Chemical Engineering"], "salary_lpa": "6-11", "work_mode": "WFO", "location": "Pan-India"},
 }
 
-# ─── Model Architecture (must match training exactly) ──────────────────────
+# Model Architecture 
 class TabBranch(nn.Module):
     def __init__(self, in_dim, out_dim=64, dropout=0.3):
         super().__init__()
@@ -125,25 +226,20 @@ def load_models():
     global placement_model, tokenizer, scaler_hybrid, scaler_student, emp_model
     global models_loaded, load_error, THRESHOLD, TEMPERATURE
     try:
-        import sklearn
+        from sklearn.preprocessing import StandardScaler
+        import numpy.random._mt19937
         print(f"[BOOT] Device: {DEVICE}")
-        ckpt_path = os.environ.get("PLACEMENT_MODEL_PATH", get_model_path())        
+        ckpt_path = os.environ.get("PLACEMENT_MODEL_PATH", get_model_path())
         print(f"[BOOT] Loading placement model from: {ckpt_path}")
-        torch.serialization.add_safe_globals([sklearn.preprocessing._data.StandardScaler])
         ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
         placement_model = BertLSTMHybrid(tab_dim=len(HYBRID_TAB_COLS)).to(DEVICE)
         placement_model.load_state_dict(ckpt["model"])
         placement_model.eval()
 
-        if "scaler_hybrid" in ckpt:
-            scaler_hybrid  = ckpt["scaler_hybrid"]
-            scaler_student = ckpt["scaler_student"]
-            print("[BOOT] Scalers loaded from .pt checkpoint.")
-        else:
-            with open(os.environ.get("SCALER_HYBRID_PATH",  "scaler_hybrid.pkl"),  "rb") as f: scaler_hybrid  = pickle.load(f)
-            with open(os.environ.get("SCALER_STUDENT_PATH", "scaler_student.pkl"), "rb") as f: scaler_student = pickle.load(f)
-            print("[BOOT] Scalers loaded from .pkl files.")
+        with open(os.environ.get("SCALER_HYBRID_PATH",  "scaler_hybrid.pkl"),  "rb") as f: scaler_hybrid  = pickle.load(f)
+        with open(os.environ.get("SCALER_STUDENT_PATH", "scaler_student.pkl"), "rb") as f: scaler_student = pickle.load(f)
+        print("[BOOT] Scalers loaded from .pkl files.")
 
         if "threshold"   in ckpt: THRESHOLD    = ckpt["threshold"]
         if "temperature" in ckpt: TEMPERATURE  = ckpt["temperature"]
@@ -204,31 +300,24 @@ def get_emp_category(prob: float):
     return "Very Low", "#b71c1c"
 
 def apply_guardrails(raw_placement, raw_emp, cgpa, backlogs, company_min_cgpa):
-    """
-    Data-calibrated post-prediction adjustments from the notebook.
-    Each penalty is justified by actual placement rates in the training dataset.
-    """
     adj_place = raw_placement
     adj_emp   = raw_emp
     reasons   = []
 
-    # CGPA below company minimum → hard cap (0% actual rate → capped at 8%)
     if cgpa < company_min_cgpa:
         adj_place = min(adj_place, 0.08)
         reasons.append(f"CGPA {cgpa:.1f} is below company minimum {company_min_cgpa:.1f}")
 
-    # Backlogs — data-calibrated per actual placed rates
     if backlogs == 1:
-        adj_place *= 0.52          # actual rate: 23.4% → proportional penalty
+        adj_place *= 0.52
         reasons.append("1 backlog present — moderate penalty applied")
     elif backlogs == 2:
-        adj_place = min(adj_place, 0.08)   # actual rate: 6.0%
+        adj_place = min(adj_place, 0.08)
         reasons.append("2 backlogs — significant placement risk")
     elif backlogs >= 3:
-        adj_place = min(adj_place, 0.08)   # actual rate: 5.5%
+        adj_place = min(adj_place, 0.08)
         reasons.append(f"{backlogs} backlogs — very high risk of rejection")
 
-    # Employability penalty for very low CGPA
     if cgpa < 6.0:
         adj_emp *= 0.60
         reasons.append("CGPA < 6.0 reduces overall employability")
@@ -237,13 +326,13 @@ def apply_guardrails(raw_placement, raw_emp, cgpa, backlogs, company_min_cgpa):
 
 def generate_feedback(profile: dict) -> dict:
     strengths, issues, improvements = [], [], []
-    cgpa       = profile.get("cgpa", 0)
-    backlogs   = profile.get("backlogs", 0)
+    cgpa        = profile.get("cgpa", 0)
+    backlogs    = profile.get("backlogs", 0)
     internships = profile.get("internships_done", 0)
-    projects   = profile.get("projects_completed", 0)
-    comm       = profile.get("communication_score", 0)
-    apt        = profile.get("aptitude_score", 0)
-    certs      = profile.get("num_certifications", 0)
+    projects    = profile.get("projects_completed", 0)
+    comm        = profile.get("communication_score", 0)
+    apt         = profile.get("aptitude_score", 0)
+    certs       = profile.get("num_certifications", 0)
 
     if cgpa >= 8.5:   strengths.append("Excellent CGPA (≥8.5) — opens doors to Tier-1 companies.")
     elif cgpa >= 7.0: strengths.append("Good CGPA (7.0–8.5) — eligible for most Tier-2 companies.")
@@ -292,21 +381,16 @@ def get_tier_recommendation(emp_prob: float) -> str:
     return "Focus on skill-building before applying"
 
 def score_student_for_company(student: dict, company: dict, company_name: str) -> dict:
-    """
-    Compute a fit score (0-100) for a student vs a company purely from
-    rule-based heuristics (no BERT call — used for bulk shortlisting).
-    """
-    cgpa       = student["cgpa"]
-    backlogs   = student["backlogs"]
+    cgpa        = student["cgpa"]
+    backlogs    = student["backlogs"]
     internships = student["internships"]
-    projects   = student["projects"]
-    comm       = student["comm"]
+    projects    = student["projects"]
+    comm        = student["comm"]
     tech_skills = student["tech_skills"]
 
     score = 100.0
     reasons = []
 
-    # Hard CGPA filter
     if cgpa < company["min_cgpa"]:
         score *= 0.08
         reasons.append(f"CGPA {cgpa:.1f} below required {company['min_cgpa']:.1f}")
@@ -314,34 +398,27 @@ def score_student_for_company(student: dict, company: dict, company_name: str) -
         surplus = min((cgpa - company["min_cgpa"]) / 2.0, 1.0)
         score  += surplus * 10
 
-    # Backlogs
     if backlogs >= 2: score *= 0.50
     elif backlogs == 1:
         tier_enc = TIER_MAP.get(company["tier"], 1)
         if tier_enc >= 3: score *= 0.60
 
-    # Internship
     if company["min_intern"] > 0 and internships < company["min_intern"]:
         score *= 0.70
 
-    # Projects
     if projects >= company["min_proj"] + 2: score += 8
     elif projects >= company["min_proj"]:    score += 3
     else:                                    score *= 0.85
 
-    # Communication
     if comm >= company["min_comm"]:
         score += min((comm - company["min_comm"]) * 1.5, 8)
     else:
         score *= 0.90
 
-    # Skill match
     skill_match = compute_skill_match(tech_skills, company.get("skills", []))
     score += skill_match * 20
-
     score = max(0, min(100, score))
 
-    # Label
     if score >= 75:   fit = "Strong Fit";  fit_color = "#2e7d32"
     elif score >= 55: fit = "Good Fit";    fit_color = "#1565c0"
     elif score >= 35: fit = "Possible Fit";fit_color = "#f57f17"
@@ -362,14 +439,82 @@ def score_student_for_company(student: dict, company: dict, company_name: str) -
         "reasons":      reasons,
     }
 
-# ─── Routes ────────────────────────────────────────────────────────────────
+# ─── Auth Routes ───────────────────────────────────────────────────────────
+@app.route("/login", methods=["GET"])
+def login_page():
+    if "user_id" in session:
+        return redirect(url_for("index"))
+    return render_template("login.html")
+
+@app.route("/login", methods=["POST"])
+def login_post():
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "error": "Invalid request"}), 400
+    identifier = data.get("identifier", "").strip()
+    password   = data.get("password", "")
+    if not identifier or not password:
+        return jsonify({"success": False, "error": "Username/email and password are required."}), 400
+    user = verify_user(identifier, password)
+    if not user:
+        return jsonify({"success": False, "error": "Invalid credentials. Please try again."}), 401
+    session.permanent = True
+    session["user_id"]   = user["id"]
+    session["username"]  = user["username"]
+    return jsonify({"success": True, "username": user["username"]})
+
+@app.route("/register", methods=["POST"])
+def register_post():
+    data     = request.get_json()
+    username = data.get("username", "").strip()
+    email    = data.get("email", "").strip()
+    password = data.get("password", "")
+    confirm  = data.get("confirm_password", "")
+
+    if not username or not email or not password:
+        return jsonify({"success": False, "error": "All fields are required."}), 400
+    if len(username) < 3:
+        return jsonify({"success": False, "error": "Username must be at least 3 characters."}), 400
+    if len(password) < 6:
+        return jsonify({"success": False, "error": "Password must be at least 6 characters."}), 400
+    if password != confirm:
+        return jsonify({"success": False, "error": "Passwords do not match."}), 400
+    if "@" not in email:
+        return jsonify({"success": False, "error": "Please enter a valid email address."}), 400
+
+    try:
+        create_user(username, email, password)
+    except sqlite3.IntegrityError as e:
+        if "username" in str(e):
+            return jsonify({"success": False, "error": "Username already taken."}), 409
+        if "email" in str(e):
+            return jsonify({"success": False, "error": "Email already registered."}), 409
+        return jsonify({"success": False, "error": "Registration failed. Please try again."}), 500
+
+    user = verify_user(username, password)
+    session.permanent = True
+    session["user_id"]  = user["id"]
+    session["username"] = user["username"]
+    return jsonify({"success": True, "username": user["username"]})
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
+
+# ─── Main Routes ───────────────────────────────────────────────────────────
 @app.route("/")
-def index(): return render_template("index.html")
+@login_required
+def index():
+    return render_template("index.html", username=session.get("username"))
 
 @app.route("/api/status")
-def status(): return jsonify({"loaded": models_loaded, "error": load_error, "device": str(DEVICE)})
+@login_required
+def status():
+    return jsonify({"loaded": models_loaded, "error": load_error, "device": str(DEVICE)})
 
 @app.route("/api/company_info")
+@login_required
 def company_info():
     name = request.args.get("name", "").lower().strip()
     info = KNOWN_COMPANIES.get(name)
@@ -377,6 +522,7 @@ def company_info():
     return jsonify({"found": False})
 
 @app.route("/api/predict", methods=["POST"])
+@login_required
 def predict():
     if not models_loaded:
         return jsonify({"error": f"Models not loaded. {load_error or ''}"}), 503
@@ -406,22 +552,16 @@ def predict():
     num_soft = len(soft_skills)
     num_cert = len(certifications)
 
-    # ── Employability (GBT) — RAW unscaled data, matching training ──────────
     student_vec = np.array([[
         cgpa, tenth_percentage, twelfth_percentage,
         num_tech, num_soft, num_cert, internships, projects, backlogs,
         communication_score, aptitude_score, hackathons,
         open_source, research_papers, soft_skills_rating,
     ]], dtype=np.float32)
-    # ✅ NO scaler — emp_model was trained on raw values (see notebook Cell 9)
     raw_emp_prob = float(emp_model.predict_proba(student_vec)[0, 1])
 
-    # Default guardrail values for general mode
     company_min_cgpa = 6.0
-
-    response = {
-        "mode": mode,
-    }
+    response = {"mode": mode}
 
     if mode == "company":
         applied_company         = data.get("applied_company", "")
@@ -480,7 +620,6 @@ def predict():
             logit = placement_model(ids, mask, tids, tab)
             raw_placement_prob = float(torch.sigmoid(logit / TEMPERATURE).cpu().item())
 
-        # ── Data-calibrated guardrails (from notebook) ──────────────────────
         placement_prob, emp_prob, guardrail_reasons = apply_guardrails(
             raw_placement_prob, raw_emp_prob, cgpa, backlogs, company_min_cgpa
         )
@@ -509,7 +648,6 @@ def predict():
             }),
         })
     else:
-        # General mode — no guardrail needed for skill match (no company)
         _, emp_prob_adj, reasons = apply_guardrails(0, raw_emp_prob, cgpa, backlogs, 6.0)
         emp_cat, emp_color = get_emp_category(emp_prob_adj)
         response.update({
@@ -527,70 +665,103 @@ def predict():
                 "open_source_contributions": open_source, "research_papers": research_papers,
             }),
         })
+            # Save prediction to history (after response is built, before returning)
+    try:
+        # Store the input data that was sent
+        input_data_to_save = {
+            "mode": mode,
+            "branch": branch,
+            "year": year,
+            "cgpa": cgpa,
+            "tech_skills": tech_skills,
+            "soft_skills": soft_skills,
+            "certifications": certifications,
+            "internships": internships,
+            "projects": projects,
+            "backlogs": backlogs,
+            "hackathons": hackathons,
+            "communication_score": communication_score,
+            "aptitude_score": aptitude_score,
+            "soft_skills_rating": soft_skills_rating,
+            "tenth_percentage": tenth_percentage,
+            "twelfth_percentage": twelfth_percentage,
+            "open_source": open_source,
+            "research_papers": research_papers,
+        }
+        
+        # Add company-specific fields if in company mode
+        if mode == "company":
+            input_data_to_save["applied_company"] = data.get("applied_company", "")
+            input_data_to_save["company_tier"] = data.get("company_tier", "")
+            input_data_to_save["company_domain"] = data.get("company_domain", "")
+            input_data_to_save["company_min_cgpa"] = data.get("company_min_cgpa", 6.0)
+            input_data_to_save["company_min_intern"] = data.get("company_min_intern", 0)
+            input_data_to_save["company_min_proj"] = data.get("company_min_proj", 1)
+            input_data_to_save["company_min_comm"] = data.get("company_min_comm", 5)
+            input_data_to_save["company_required_skills"] = data.get("company_required_skills", [])
+        
+        # Save to history using the user_id from session
+        save_prediction_to_history(session["user_id"], mode, input_data_to_save, response)
+    except Exception as e:
+        print(f"[WARNING] Failed to save prediction to history: {e}")
+        # Don't fail the request if history saving fails
 
     return jsonify(response)
 
 
 @app.route("/api/shortlist", methods=["POST"])
+@login_required
 def shortlist():
-    """
-    Return top company matches for the student (no BERT — rule-based scoring).
-    Supports optional filters: work_mode, min_salary_lpa, domain.
-    """
     data = request.get_json()
     student = {
-        "cgpa":       float(data.get("cgpa", 7.0)),
-        "backlogs":   int(data.get("backlogs", 0)),
+        "cgpa":        float(data.get("cgpa", 7.0)),
+        "backlogs":    int(data.get("backlogs", 0)),
         "internships": int(data.get("internships", 0)),
-        "projects":   int(data.get("projects", 0)),
-        "comm":       int(data.get("communication_score", 5)),
-        "aptitude":   float(data.get("aptitude_score", 60)),
+        "projects":    int(data.get("projects", 0)),
+        "comm":        int(data.get("communication_score", 5)),
+        "aptitude":    float(data.get("aptitude_score", 60)),
         "tech_skills": [s.strip() for s in data.get("tech_skills", []) if s.strip()],
     }
 
-    filter_mode    = data.get("work_mode_filter", "Any")        # Any / WFO / Hybrid / Remote
-    filter_domain  = data.get("domain_filter", "Any").lower()   # Any / it services / product / fintech …
-    top_n          = int(data.get("top_n", 8))
+    filter_mode   = data.get("work_mode_filter", "Any")
+    filter_domain = data.get("domain_filter", "Any").lower()
+    top_n         = int(data.get("top_n", 8))
 
     results = []
     for name, company in KNOWN_COMPANIES.items():
-        # Domain filter
         if filter_domain != "any" and filter_domain not in company["domain"].lower():
             continue
-        # Work mode filter
         if filter_mode != "Any" and filter_mode.lower() not in company.get("work_mode", "").lower():
             continue
-
         result = score_student_for_company(student, company, name)
         results.append(result)
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    top     = results[:top_n]
-    safe    = [r for r in results if r["fit"] in ("Strong Fit", "Good Fit")][:3]
-    dream   = [r for r in results if r["tier"] in ("Tier-1 Product", "Tier-2 Product")][:3]
+    top   = results[:top_n]
+    safe  = [r for r in results if r["fit"] in ("Strong Fit", "Good Fit")][:3]
+    dream = [r for r in results if r["tier"] in ("Tier-1 Product", "Tier-2 Product")][:3]
 
     return jsonify({"companies": top, "safe_bets": safe, "dream_picks": dream})
 
 
 @app.route("/api/learning_path", methods=["POST"])
+@login_required
 def learning_path():
-    """Generate a personalised 30/60/90-day learning path."""
-    data           = request.get_json()
-    cgpa           = float(data.get("cgpa", 7.0))
-    aptitude       = float(data.get("aptitude_score", 60))
-    comm           = int(data.get("communication_score", 5))
-    projects       = int(data.get("projects", 0))
-    internships    = int(data.get("internships", 0))
-    backlogs       = int(data.get("backlogs", 0))
-    certs          = int(data.get("certifications", 0))
-    tech_skills    = [s.lower().strip() for s in data.get("tech_skills", [])]
-    target_tier    = data.get("target_tier", "Tier-2 IT Services")
-    open_source    = int(data.get("open_source", 0))
+    data        = request.get_json()
+    cgpa        = float(data.get("cgpa", 7.0))
+    aptitude    = float(data.get("aptitude_score", 60))
+    comm        = int(data.get("communication_score", 5))
+    projects    = int(data.get("projects", 0))
+    internships = int(data.get("internships", 0))
+    backlogs    = int(data.get("backlogs", 0))
+    certs       = int(data.get("certifications", 0))
+    tech_skills = [s.lower().strip() for s in data.get("tech_skills", [])]
+    target_tier = data.get("target_tier", "Tier-2 IT Services")
+    open_source = int(data.get("open_source", 0))
 
     days30, days60, days90 = [], [], []
     certifications_suggested = []
 
-    # ── Aptitude track ──────────────────────────────────────────────────────
     if aptitude < 60:
         days30.append({"icon": "🧮", "task": "Daily aptitude practice", "detail": "30 min/day on IndiaBIX — Number Series, Percentages, Profit & Loss", "priority": "Critical"})
         days60.append({"icon": "💻", "task": "HackerRank Problem Solving", "detail": "Complete 'Problem Solving (Basic)' certification — 2 problems/day", "priority": "High"})
@@ -598,25 +769,21 @@ def learning_path():
         days30.append({"icon": "🧮", "task": "Aptitude polish", "detail": "Focus on Time & Work, Permutations — 20 min/day on PrepInsta", "priority": "Medium"})
         days60.append({"icon": "💻", "task": "LeetCode Easy/Medium streak", "detail": "15 problems/week — focus on Arrays, Strings, HashMap", "priority": "High"})
 
-    # ── Communication ───────────────────────────────────────────────────────
     if comm < 6:
         days30.append({"icon": "🗣️", "task": "Communication bootcamp", "detail": "Daily 15-min spoken English exercises on ELSA Speak or Toastmasters recordings", "priority": "Critical"})
         days60.append({"icon": "🎤", "task": "Mock HR interviews", "detail": "Record yourself answering 'Tell me about yourself' and 'Why this company?' — refine weekly", "priority": "High"})
 
-    # ── Projects ────────────────────────────────────────────────────────────
     if projects < 3:
         days30.append({"icon": "🛠️", "task": "Start a portfolio project", "detail": "Build a CRUD app with a REST API and deploy it on Vercel/Railway", "priority": "High"})
         days60.append({"icon": "🛠️", "task": "Complete 2nd project with ML/API", "detail": "Add a model inference endpoint or integrate a third-party API", "priority": "High"})
         days90.append({"icon": "🛠️", "task": "Open-source contribution or capstone", "detail": "Raise a PR on a GitHub repo with 100+ stars — adds credibility", "priority": "Medium"})
 
-    # ── DSA Track ──────────────────────────────────────────────────────────
     has_dsa = any(k in tech_skills for k in ["data structures", "algorithms", "dsa", "leetcode"])
     if not has_dsa:
         days30.append({"icon": "📚", "task": "DSA Foundations", "detail": "Arrays, Linked Lists, Stacks, Queues — Striver's A2Z Sheet (first 50 problems)", "priority": "High"})
         days60.append({"icon": "📚", "task": "Trees, Graphs, DP", "detail": "Striver's Sheet sections 6–10; aim for 5 problems every day", "priority": "High"})
         days90.append({"icon": "📚", "task": "Competitive practice", "detail": "Join Codeforces Div-3 / LeetCode Weekly — consistent participation", "priority": "Medium"})
 
-    # ── Certifications ──────────────────────────────────────────────────────
     if target_tier in ("Tier-1 Product", "Tier-2 Product"):
         certifications_suggested = [
             {"name": "AWS Cloud Practitioner", "platform": "AWS", "duration": "2–3 weeks", "link": "https://aws.amazon.com/certification/certified-cloud-practitioner/"},
@@ -638,19 +805,15 @@ def learning_path():
         ]
         days30.append({"icon": "📖", "task": "Begin GATE preparation", "detail": "Engineering Mathematics + your core branch — minimum 3 hr/day", "priority": "Critical"})
 
-    # ── Open source ─────────────────────────────────────────────────────────
     if open_source == 0:
         days90.append({"icon": "🌐", "task": "First open-source PR", "detail": "Pick a 'good first issue' on GitHub — label filter: good-first-issue", "priority": "Medium"})
 
-    # ── Internship / networking ─────────────────────────────────────────────
     if internships == 0:
         days60.append({"icon": "💼", "task": "Apply for virtual internships", "detail": "LinkedIn, Internshala, AngelList — apply to 5 listings/week minimum", "priority": "High"})
 
-    # ── Backlogs ────────────────────────────────────────────────────────────
     if backlogs > 0:
         days30.insert(0, {"icon": "🚨", "task": "Clear active backlogs first", "detail": f"You have {backlogs} backlog(s) — prioritise these above everything else", "priority": "Critical"})
 
-    # Default filler if nothing to suggest
     if not days90:
         days90.append({"icon": "🏆", "task": "Mock placement interview cycle", "detail": "Full 3-round mock: OA → Technical → HR — schedule with peers or use Pramp.com", "priority": "Medium"})
 
@@ -664,11 +827,8 @@ def learning_path():
 
 
 @app.route("/api/resume_score", methods=["POST"])
+@login_required
 def resume_score():
-    """
-    Score the student's profile as a recruiter would scan a résumé.
-    Returns a score out of 100 with section-level breakdown.
-    """
     data           = request.get_json()
     cgpa           = float(data.get("cgpa", 7.0))
     tenth          = float(data.get("tenth_percentage", 70))
@@ -686,7 +846,6 @@ def resume_score():
 
     sections = {}
 
-    # Academics (25 pts)
     acad = 0
     if cgpa >= 9.0:    acad += 25
     elif cgpa >= 8.0:  acad += 20
@@ -698,15 +857,12 @@ def resume_score():
     if tenth >= 85 or twelfth >= 85: acad = min(acad + 2, 25)
     sections["Academics"] = {"score": acad, "max": 25, "icon": "🎓"}
 
-    # Skills (25 pts)
     skill_score = min(len(tech_skills) * 3, 18) + min(len(soft_skills) * 2, 7)
     sections["Skills"] = {"score": min(skill_score, 25), "max": 25, "icon": "💡"}
 
-    # Experience (25 pts)
     exp = min(internships * 8, 16) + min(projects * 3, 9)
     sections["Experience"] = {"score": min(exp, 25), "max": 25, "icon": "💼"}
 
-    # Extras (25 pts)
     extras = (
         min(len(certifications) * 4, 10) +
         min(hackathons * 2, 6) +
@@ -736,26 +892,21 @@ def resume_score():
         tips.append("Use strong action verbs (Designed, Optimised, Deployed) and keep bullet points concise.")
 
     return jsonify({
-        "total": total,
-        "grade": grade,
-        "grade_color": grade_color,
-        "sections": sections,
-        "tips": tips,
+        "total": total, "grade": grade, "grade_color": grade_color,
+        "sections": sections, "tips": tips,
     })
 
 
 @app.route("/api/interview_tips", methods=["POST"])
+@login_required
 def interview_tips():
-    """Return tier-specific interview preparation tips."""
     data        = request.get_json()
     tier        = data.get("tier", "Tier-2 IT Services")
     company     = data.get("company", "").lower().strip()
     cgpa        = float(data.get("cgpa", 7.0))
     tech_skills = [s.lower().strip() for s in data.get("tech_skills", [])]
 
-    rounds = []
-    resources = []
-    tips = []
+    rounds = []; resources = []; tips = []
 
     if tier == "Tier-1 Product":
         rounds = [
@@ -834,7 +985,7 @@ def interview_tips():
     company_specific = []
     known = KNOWN_COMPANIES.get(company, {})
     if known:
-        required = known.get("skills", [])
+        required      = known.get("skills", [])
         student_has   = [s for s in required if any(s.lower() in t for t in tech_skills)]
         student_lacks = [s for s in required if s not in student_has]
         if student_lacks:
@@ -843,14 +994,37 @@ def interview_tips():
             company_specific.append(f"You already have: {', '.join(student_has[:4])} — mention these prominently in the interview.")
 
     return jsonify({
-        "tier": tier,
-        "rounds": rounds,
-        "resources": resources,
-        "tips": tips,
-        "company_specific": company_specific,
+        "tier": tier, "rounds": rounds, "resources": resources,
+        "tips": tips, "company_specific": company_specific,
     })
+
+@app.route("/api/history", methods=["GET"])
+@login_required
+def get_history():
+    """Get all prediction history for the logged-in user."""
+    import json
+    user_id = session["user_id"]
+    
+    with get_db() as conn:
+        history = conn.execute(
+            "SELECT id, mode, input_data, result_data, created_at FROM prediction_history WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+    
+    history_list = []
+    for record in history:
+        history_list.append({
+            "id": record["id"],
+            "mode": record["mode"],
+            "created_at": record["created_at"],
+            "input_data": json.loads(record["input_data"]),
+            "result_data": json.loads(record["result_data"])
+        })
+    
+    return jsonify({"history": history_list})
 
 
 if __name__ == "__main__":
+    init_db()
     load_models()
     app.run(debug=False, host="0.0.0.0", port=5000)

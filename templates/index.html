@@ -202,6 +202,9 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
   <div class="header-right">
     <div class="status-dot" id="statusDot"></div>
     <span class="status-label" id="statusLabel">Connecting…</span>
+    <div style="width:1px;height:22px;background:rgba(255,255,255,.15);margin:0 4px;flex-shrink:0"></div>
+    <span style="font-size:12.5px;color:#c9b49a;font-weight:500">👤 {{ username }}</span>
+    <a href="/logout" style="padding:7px 16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:20px;font-size:12px;font-weight:600;color:#e8d9cc;text-decoration:none;transition:background .2s;flex-shrink:0" onmouseover="this.style.background='rgba(255,255,255,.2)'" onmouseout="this.style.background='rgba(255,255,255,.1)'">Sign Out</a>
   </div>
 </header>
 
@@ -400,6 +403,8 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
         <div class="panel-tab active" onclick="switchTab('prediction')">📊 Prediction</div>
         <div class="panel-tab" onclick="switchTab('resume')">📄 Resume Score</div>
         <div class="panel-tab" onclick="switchTab('interview')">🎤 Interview</div>
+        <div class="panel-tab" onclick="switchTab('history')">📜 History</div>
+
       </div>
 
       <!-- Prediction tab -->
@@ -445,6 +450,16 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
         </div>
       </div>
 
+<div class="panel-pane" id="pane-history">
+        <div style="margin-bottom:12px;font-size:13px;color:var(--ink3)">Your past predictions and analyses.</div>
+        <button class="resume-btn" onclick="loadHistory()" style="margin-bottom:16px">🔄 Refresh History</button>
+        <div id="history-content">
+          <div class="results-placeholder" style="padding:30px 0">
+            <p>No predictions yet. Make a prediction to see it here.</p>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /card -->
   </div>
 </div>
@@ -476,7 +491,7 @@ async function checkStatus() {
 // ── Tab switching ───────────────────────────────────────────────────────────
 function switchTab(name) {
   document.querySelectorAll('.panel-tab').forEach((t,i) => {
-    const names = ['prediction','resume','interview'];
+    const names = ['prediction','resume','interview', 'history'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.panel-pane').forEach(p => p.classList.remove('active'));
@@ -766,6 +781,162 @@ function showToast(msg) {
   t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),3000);
 }
+
+// ── History Functions ───────────────────────────────────────────────────────────
+
+// ── Helper function to escape HTML ───────────────────────────────────────────
+function escapeHtml(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+async function loadHistory() {
+    const historyContainer = document.getElementById('history-content');
+    historyContainer.innerHTML = '<div style="padding:20px;text-align:center;color:var(--ink3)">Loading your history...</div>';
+    
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) {
+            throw new Error('Failed to load history');
+        }
+        
+        const data = await response.json();
+        renderHistory(data.history, historyContainer);
+    } catch (error) {
+        historyContainer.innerHTML = `<div style="color:var(--red);padding:12px">Error loading history: ${error.message}</div>`;
+    }
+}
+
+function renderHistory(history, container) {
+    if (!history || history.length === 0) {
+        container.innerHTML = `
+            <div class="results-placeholder" style="padding:30px 0">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                </svg>
+                <p>No predictions yet. Make a prediction to see it here.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let historyHtml = '<div style="display:flex;flex-direction:column;gap:16px;">';
+    
+    for (const record of history) {
+        const date = new Date(record.created_at).toLocaleString(undefined, {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });        
+        const modeIcon = record.mode === 'company' ? '🏢' : '🎯';
+        const modeText = record.mode === 'company' ? 'Company Placement' : 'Overall Employability';
+        
+        // Extract key info from results
+        const empProb = record.result_data.employability || 0;
+        const empCategory = record.result_data.emp_category || 'N/A';
+        
+        let additionalInfo = '';
+        if (record.mode === 'company') {
+            const placementProb = record.result_data.placement_probability || 0;
+            const placed = record.result_data.placed || false;
+            const companyName = record.input_data.applied_company || 'Unknown Company';
+            additionalInfo = `
+                <div style="font-size:12px;margin-top:8px;">
+                     <span style="color:var(--teal)">🏢 ${escHtml(companyName)}</span>
+                    Placement: <strong style="color:${placed ? 'var(--green)' : 'var(--red)'}">${placementProb}%</strong>
+                </div>
+            `;
+        }
+        
+        historyHtml += `
+            <div class="history-card" style="border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:all 0.2s;" onclick="viewHistoryDetails(${record.id})">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                    <div>
+                        <span style="font-size:18px;margin-right:8px">${modeIcon}</span>
+                        <strong style="font-size:14px;">${modeText}</strong>
+                    </div>
+                    <span style="font-size:11px;color:var(--ink3);">${date}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span class="emp-category" style="background:${record.result_data.emp_color || '#2a7c72'}22;color:${record.result_data.emp_color || '#2a7c72'};font-size:11px;">
+                            ${empCategory}
+                        </span>
+                        <div style="font-size:20px;font-weight:700;color:${record.result_data.emp_color || '#2a7c72'};margin-top:5px;">
+                            ${empProb}%
+                        </div>
+                        <div style="font-size:11px;color:var(--ink3);">Employability</div>
+                    </div>
+                    ${additionalInfo}
+                </div>
+                <div style="margin-top:10px;font-size:11px;color:var(--gold);text-align:right;">
+                    Click to view full details →
+                </div>
+            </div>
+        `;
+    }
+    
+    historyHtml += '</div>';
+    container.innerHTML = historyHtml;
+}
+
+async function viewHistoryDetails(historyId) {
+    // First load the history to find the specific record
+    try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+        const record = data.history.find(r => r.id === historyId);
+        
+        if (record) {
+            // Switch to prediction tab
+            switchTab('prediction');
+            
+            // Display the historical result
+            document.getElementById('results-placeholder').style.display = 'none';
+            const area = document.getElementById('results-content');
+            area.style.display = 'block';
+            
+            // Re-render the results using the stored data
+            // We need to temporarily set mode to match the history record
+            const originalMode = currentMode;
+            currentMode = record.mode;
+            renderResults(record.result_data);
+            currentMode = originalMode;
+            
+            // Show a toast notification
+            showToast(`Showing prediction from ${new Date(record.created_at).toLocaleString(undefined, {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            })}`);      
+            }
+    } catch (error) {
+        showToast('Error loading prediction details');
+    }
+}
+
+// Update the switchTab function to handle the history tab
+const originalSwitchTab = switchTab;
+switchTab = function(name) {
+    originalSwitchTab(name);
+    if (name === 'history') {
+        loadHistory();
+    }
+};
+
 </script>
 </body>
 </html>
