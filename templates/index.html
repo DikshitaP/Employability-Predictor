@@ -189,6 +189,198 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
 .results-placeholder p  { font-size:13px;opacity:.5;line-height:1.5; }
 
 .results-panel { position:sticky;top:80px; }
+
+/* ── Study Groups Nav Button ───────────────────────────────────────────────── */
+.sg-nav-btn { display:flex;align-items:center;gap:7px;padding:8px 18px;background:linear-gradient(135deg,var(--teal),var(--teal2));border:none;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:#fff;cursor:pointer;transition:transform .15s,box-shadow .15s,opacity .2s;flex-shrink:0;white-space:nowrap; }
+.sg-nav-btn:hover { transform:translateY(-1px);box-shadow:0 4px 14px rgba(42,124,114,.45); }
+.sg-nav-btn svg { flex-shrink:0; }
+
+/* ── Study Groups Overlay ──────────────────────────────────────────────────── */
+#sg-overlay { display:none;position:fixed;inset:0;z-index:500;background:rgba(26,20,16,.55);backdrop-filter:blur(3px);align-items:flex-start;justify-content:center;padding:20px 16px 40px; }
+#sg-overlay.open { display:flex; }
+.sg-modal { background:var(--cream);border-radius:var(--r2);width:100%;max-width:960px;max-height:calc(100vh - 60px);overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow2);animation:fadeUp .25s ease; }
+.sg-modal-header { background:var(--ink);color:#fff;padding:18px 28px;display:flex;align-items:center;gap:12px;flex-shrink:0; }
+.sg-modal-header h2 { font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:-.2px;flex:1; }
+.sg-close { background:rgba(255,255,255,.12);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background .15s; }
+.sg-close:hover { background:rgba(255,255,255,.25); }
+
+.sg-body { display:flex;flex:1;overflow:hidden; }
+.sg-sidebar { width:220px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);padding:20px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto; }
+.sg-sidebar-btn { padding:10px 14px;border:none;border-radius:var(--r);background:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;text-align:left;transition:background .15s,color .15s; }
+.sg-sidebar-btn:hover { background:var(--parchment); }
+.sg-sidebar-btn.active { background:rgba(42,124,114,.1);color:var(--teal);font-weight:600; }
+.sg-sidebar-section { font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--ink3);padding:14px 14px 4px; }
+
+.sg-content { flex:1;overflow-y:auto;padding:24px 28px; }
+
+/* Group cards */
+.sg-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px; }
+.sg-card { background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:18px;cursor:pointer;transition:box-shadow .15s,transform .15s;position:relative; }
+.sg-card:hover { box-shadow:var(--shadow2);transform:translateY(-2px); }
+.sg-card-header { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px; }
+.sg-card-name { font-family:'DM Serif Display',serif;font-size:15px;color:var(--ink);line-height:1.3;flex:1;padding-right:8px; }
+.sg-tier-badge { font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0; }
+.sg-card-company { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--teal);font-weight:600;margin-bottom:8px; }
+.sg-card-meta { font-size:11.5px;color:var(--ink3);display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap; }
+.sg-card-desc { font-size:12.5px;color:var(--ink2);line-height:1.5;margin-bottom:12px; }
+.sg-tags { display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px; }
+.sg-skill-tag { background:var(--parchment);border:1px solid var(--border);border-radius:10px;padding:2px 9px;font-size:11px;color:var(--ink2); }
+.sg-card-footer { display:flex;align-items:center;justify-content:space-between; }
+.sg-member-avatars { display:flex; }
+.sg-avatar { width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--ink);margin-left:-6px;flex-shrink:0; }
+.sg-avatar:first-child { margin-left:0; }
+.sg-join-btn { padding:6px 16px;background:var(--teal);color:#fff;border:none;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s; }
+.sg-join-btn:hover { background:var(--teal2); }
+.sg-join-btn.joined { background:var(--green); cursor:default; }
+.sg-join-btn.leave { background:rgba(192,57,43,.12);color:var(--red); }
+.sg-join-btn.leave:hover { background:rgba(192,57,43,.2); }
+
+/* Create form */
+.sg-form-section { background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:24px;margin-bottom:20px; }
+.sg-form-section h3 { font-family:'DM Serif Display',serif;font-size:16px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border); }
+.sg-form-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px 20px; }
+.sg-field-full { grid-column:1/-1; }
+.sg-create-btn { padding:12px 28px;background:var(--teal);color:#fff;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s; }
+.sg-create-btn:hover { background:var(--teal2); }
+
+/* My groups */
+.sg-my-card { background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:16px; }
+.sg-my-icon { width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--teal),var(--teal2));display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0; }
+.sg-my-info { flex:1; }
+.sg-my-name { font-weight:700;font-size:14px;color:var(--ink); }
+.sg-my-sub  { font-size:12px;color:var(--ink3);margin-top:2px; }
+.sg-leave-btn { padding:6px 14px;background:rgba(192,57,43,.1);color:var(--red);border:1px solid rgba(192,57,43,.2);border-radius:20px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap; }
+.sg-leave-btn:hover { background:rgba(192,57,43,.2); }
+
+/* Chat styles */
+.chat-message {
+    margin-bottom: 16px;
+    display: flex;
+    gap: 12px;
+    animation: fadeUp 0.2s ease;
+}
+.chat-message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), var(--gold2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink);
+    flex-shrink: 0;
+}
+.chat-message-content {
+    flex: 1;
+}
+.chat-message-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.chat-message-username {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+}
+.chat-message-time {
+    font-size: 10px;
+    color: var(--ink3);
+}
+.chat-message-text {
+    background: white;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border-top-left-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink2);
+    display: inline-block;
+    max-width: 100%;
+    word-wrap: break-word;
+}
+.chat-message-file {
+    background: var(--parchment);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.chat-message-file:hover {
+    background: var(--border);
+}
+.chat-message-file-icon {
+    font-size: 24px;
+}
+.chat-message-file-info {
+    font-size: 12px;
+}
+.chat-message-file-name {
+    font-weight: 600;
+    color: var(--teal);
+}
+.chat-message-reactions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+.chat-reaction {
+    background: var(--parchment);
+    border-radius: 20px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.chat-reaction:hover {
+    background: var(--border);
+}
+.chat-reaction.active {
+    background: rgba(201, 145, 58, 0.2);
+    border: 1px solid var(--gold);
+}
+.chat-own-message .chat-message-text {
+    background: rgba(42, 124, 114, 0.1);
+    border: 1px solid rgba(42, 124, 114, 0.2);
+}
+
+/* Search / filter bar */
+.sg-search-row { display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap; }
+.sg-search-input { flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13.5px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s; }
+.sg-search-input:focus { border-color:var(--teal); }
+.sg-filter-select { padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);background:#fff;outline:none;cursor:pointer; }
+
+/* Empty state */
+.sg-empty { text-align:center;padding:48px 20px;color:var(--ink3); }
+.sg-empty svg { opacity:.25;margin-bottom:14px; }
+.sg-empty p { font-size:13px;opacity:.6; }
+
+/* Tier badge colors */
+.tier-t1 { background:rgba(21,101,192,.1);color:#0d47a1; }
+.tier-t2p { background:rgba(42,124,114,.1);color:var(--teal); }
+.tier-t2i { background:rgba(212,96,10,.1);color:var(--orange); }
+.tier-psu { background:rgba(201,145,58,.12);color:var(--gold); }
+
+@media(max-width:640px){
+  .sg-body { flex-direction:column; }
+  .sg-sidebar { width:100%;flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border);padding:10px; }
+  .sg-sidebar-section { display:none; }
+  .sg-sidebar-btn { padding:7px 12px;font-size:12px; }
+  .sg-form-grid { grid-template-columns:1fr; }
+  .sg-grid { grid-template-columns:1fr; }
+}
 </style>
 </head>
 <body>
@@ -200,6 +392,11 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
     <div class="logo-sub">Student Employability Predictor</div>
   </div>
   <div class="header-right">
+    <button class="sg-nav-btn" onclick="openStudyGroups()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Study Groups
+    </button>
+    <div style="width:1px;height:22px;background:rgba(255,255,255,.15);margin:0 4px;flex-shrink:0"></div>
     <div class="status-dot" id="statusDot"></div>
     <span class="status-label" id="statusLabel">Connecting…</span>
     <div style="width:1px;height:22px;background:rgba(255,255,255,.15);margin:0 4px;flex-shrink:0"></div>
@@ -465,6 +662,145 @@ input[type=range] { width:100%;accent-color:var(--gold);background:none;border:n
 </div>
 
 <div id="toast"></div>
+
+<!-- ── Study Groups Overlay ─────────────────────────────────────────────── -->
+<div id="sg-overlay" onclick="sgOverlayClick(event)">
+  <div class="sg-modal" id="sg-modal">
+    <div class="sg-modal-header">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <h2>Study Groups</h2>
+      <button class="sg-close" onclick="closeStudyGroups()">✕</button>
+    </div>
+    <div class="sg-body">
+      <!-- Sidebar nav -->
+      <div class="sg-sidebar">
+        <div class="sg-sidebar-section">Browse</div>
+        <button class="sg-sidebar-btn active" onclick="sgShowPane('discover')">🔍 Discover Groups</button>
+        <button class="sg-sidebar-btn" onclick="sgShowPane('mygroups')">📌 My Groups</button>
+        <div class="sg-sidebar-section">Manage</div>
+        <button class="sg-sidebar-btn" onclick="sgShowPane('create')">➕ Create a Group</button>
+      </div>
+
+      <!-- Main content -->
+      <div class="sg-content" id="sg-content">
+        <!-- Discover pane -->
+        <div id="sg-pane-discover" class="sg-pane">
+          <div class="sg-search-row">
+            <input class="sg-search-input" id="sg-search" placeholder="Search by company, skill, name…" oninput="sgFilter()"/>
+            <select class="sg-filter-select" id="sg-tier-filter" onchange="sgFilter()">
+              <option value="">All Tiers</option>
+              <option value="Tier-1 Product">Tier-1 Product</option>
+              <option value="Tier-2 Product">Tier-2 Product</option>
+              <option value="Tier-2 IT Services">Tier-2 IT Services</option>
+              <option value="PSU/Research">PSU/Research</option>
+            </select>
+          </div>
+          <div class="sg-grid" id="sg-group-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+                <!-- Chat pane -->
+        <div id="sg-pane-chat" class="sg-pane" style="display:none">
+            <div style="display:flex; flex-direction:column; height: 65vh; max-height: 550px;">
+                <!-- Chat header -->
+                <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 12px;">
+                    <button onclick="sgBackToGroups()" style="background:none; border:none; cursor:pointer; color:var(--teal); font-size:13px; margin-bottom:8px;">← Back to Groups</button>
+                    <h3 id="chat-group-name" style="font-family:'DM Serif Display',serif; font-size:18px; margin:0;">Group Chat</h3>
+                    <p id="chat-group-company" style="font-size:12px; color:var(--ink3); margin:4px 0 0 0;"></p>
+                </div>
+                
+                <!-- Messages area -->
+                <div id="chat-messages-area" style="flex:1; overflow-y: auto; padding: 12px; background: var(--parchment); border-radius: var(--r); margin-bottom: 12px; min-height: 300px;">
+                    <div style="text-align:center; padding:40px; color:var(--ink3);">
+                        <div class="spinner" style="display:inline-block;"></div>
+                        <p style="margin-top:12px;">Loading messages...</p>
+                    </div>
+                </div>
+                
+                <!-- Message input area -->
+                <div style="display: flex; gap: 10px; align-items: flex-end;">
+                    <div style="flex:1;">
+                        <textarea id="chat-message-input" rows="2" placeholder="Type your message..." style="width:100%; padding:10px; border:1.5px solid var(--border); border-radius:var(--r); font-family:inherit; font-size:13px; resize:vertical; background:#fff;" onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendGroupMessage(); }"></textarea>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <label for="chat-file-input" style="cursor:pointer; background:var(--ink); color:#fff; padding:10px 14px; border-radius:var(--r); font-size:13px; display:inline-flex; align-items:center; gap:6px;">
+                            📎
+                            <span style="font-size:11px;">File</span>
+                        </label>
+                        <input type="file" id="chat-file-input" style="display:none;" onchange="uploadGroupFile(this)">
+                        <button onclick="sendGroupMessage()" style="background:var(--teal); color:#fff; border:none; padding:10px 20px; border-radius:var(--r); cursor:pointer; font-weight:600;">Send</button>
+                    </div>
+                </div>
+                <div style="font-size:10px; color:var(--ink3); margin-top:6px; text-align:center;">
+                    Press Enter to send, Shift+Enter for new line
+                </div>
+            </div>
+        </div>
+
+        <!-- My Groups pane -->
+        <div id="sg-pane-mygroups" class="sg-pane" style="display:none">
+          <div id="sg-my-list">
+            <div class="sg-empty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <p>You haven't joined any groups yet.<br/>Discover groups or create your own!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Create pane -->
+        <div id="sg-pane-create" class="sg-pane" style="display:none">
+          <div class="sg-form-section">
+            <h3>🛠 Create a New Study Group</h3>
+            <div class="sg-form-grid">
+              <div class="sg-field-full">
+                <label>Group Name</label>
+                <input type="text" id="sg-new-name" placeholder="e.g. Google SWE Prep Batch 2025"/>
+              </div>
+              <div>
+                <label>Target Company</label>
+                <input type="text" id="sg-new-company" placeholder="e.g. Google, TCS, Amazon…"/>
+              </div>
+              <div>
+                <label>Company Tier</label>
+                <select id="sg-new-tier">
+                  <option>Tier-1 Product</option>
+                  <option>Tier-2 Product</option>
+                  <option selected>Tier-2 IT Services</option>
+                  <option>PSU/Research</option>
+                </select>
+              </div>
+              <div>
+                <label>Max Members</label>
+                <input type="number" id="sg-new-max" value="10" min="2" max="50"/>
+              </div>
+              <div>
+                <label>Study Mode</label>
+                <select id="sg-new-mode">
+                  <option>Online</option>
+                  <option>Offline</option>
+                  <option>Hybrid</option>
+                </select>
+              </div>
+              <div class="sg-field-full">
+                <label>Key Focus Skills <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#a09080">— press Enter or comma</span></label>
+                <div class="tags-display" id="sg-new-skills-wrap" onclick="document.getElementById('sg-new-skills-input').focus()">
+                  <input class="tag-input" id="sg-new-skills-input" placeholder="e.g. DSA, System Design, SQL…" onkeydown="sgTagKey(event)"/>
+                </div>
+              </div>
+              <div class="sg-field-full">
+                <label>Description</label>
+                <textarea id="sg-new-desc" rows="3" placeholder="What will this group focus on? Meeting schedule, goals, etc."></textarea>
+              </div>
+            </div>
+            <div style="margin-top:20px">
+              <button class="sg-create-btn" onclick="sgCreateGroup()">✨ Create Group</button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /sg-content -->
+    </div><!-- /sg-body -->
+  </div><!-- /sg-modal -->
+</div><!-- /sg-overlay -->
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
@@ -829,7 +1165,7 @@ function renderHistory(history, container) {
     let historyHtml = '<div style="display:flex;flex-direction:column;gap:16px;">';
     
     for (const record of history) {
-        const date = new Date(record.created_at.replace(' ', 'T')).toLocaleString(undefined, {
+        const date = new Date(record.created_at).toLocaleString(undefined, {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -914,7 +1250,7 @@ async function viewHistoryDetails(historyId) {
             currentMode = originalMode;
             
             // Show a toast notification
-            showToast(`Showing prediction from ${new Date(record.created_at.replace(' ', 'T')).toLocaleString(undefined, {
+            showToast(`Showing prediction from ${new Date(record.created_at).toLocaleString(undefined, {
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -936,6 +1272,500 @@ switchTab = function(name) {
         loadHistory();
     }
 };
+
+// ── Study Groups ──────────────────────────────────────────────────────────────
+
+let sgNewSkills = [];
+let sgAllGroups = [];
+let sgMyGroupIds = new Set();
+
+function openStudyGroups() {
+    document.getElementById('sg-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    sgLoadGroups();
+}
+function closeStudyGroups() {
+    document.getElementById('sg-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+function sgOverlayClick(e) {
+    if (e.target === document.getElementById('sg-overlay')) closeStudyGroups();
+}
+
+function sgShowPane(name) {
+    document.querySelectorAll('.sg-pane').forEach(p => p.style.display = 'none');
+    document.getElementById('sg-pane-' + name).style.display = 'block';
+    document.querySelectorAll('.sg-sidebar-btn').forEach(b => b.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    if (name === 'mygroups') sgRenderMyGroups();
+    if (name === 'discover') sgFilter();
+}
+
+function sgTierBadgeClass(tier) {
+    if (tier === 'Tier-1 Product') return 'tier-t1';
+    if (tier === 'Tier-2 Product') return 'tier-t2p';
+    if (tier === 'Tier-2 IT Services') return 'tier-t2i';
+    return 'tier-psu';
+}
+
+function sgRenderGroups(groups) {
+    const grid = document.getElementById('sg-group-grid');
+    if (!groups.length) {
+        grid.innerHTML = `<div class="sg-empty" style="grid-column:1/-1">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <p>No groups found. Try a different search or <strong>create one!</strong></p>
+        </div>`;
+        return;
+    }
+        grid.innerHTML = groups.map(g => {
+        const joined = sgMyGroupIds.has(g.id);
+        const full = g.member_count >= g.max_members;
+        const avatarHtml = (g.member_initials || []).slice(0, 4).map(init =>
+            `<div class="sg-avatar">${escHtml(init)}</div>`
+        ).join('');
+        const skillTags = (g.skills || []).map(s =>
+            `<span class="sg-skill-tag">${escHtml(s)}</span>`
+        ).join('');
+        let btnLabel = joined ? '💬 Chat' : (full ? 'Full' : 'Join');
+        let btnClass = joined ? 'sg-join-btn joined' : (full ? 'sg-join-btn' : 'sg-join-btn');
+        let btnDisabled = (full && !joined) ? 'disabled' : '';
+        let btnAction = joined ? `openGroupChat(${g.id}, '${escHtml(g.name.replace(/'/g, "\\'"))}', '${escHtml(g.target_company.replace(/'/g, "\\'"))}')` : `sgToggleMembership(${g.id}, ${joined})`;
+        
+        return `<div class="sg-card" ${joined ? `style="cursor:pointer;" onclick="openGroupChat(${g.id}, '${escHtml(g.name.replace(/'/g, "\\'"))}', '${escHtml(g.target_company.replace(/'/g, "\\'"))}')"` : ''}>
+            <div class="sg-card-header">
+                <div class="sg-card-name">${escHtml(g.name)}</div>
+                <span class="sg-tier-badge ${sgTierBadgeClass(g.tier)}">${escHtml(g.tier)}</span>
+            </div>
+            <div class="sg-card-company">🏢 ${escHtml(g.target_company)}</div>
+            <div class="sg-card-meta">
+                <span>👥 ${g.member_count}/${g.max_members}</span>
+                <span>💻 ${escHtml(g.study_mode)}</span>
+                <span>📅 ${escHtml(g.created_display)}</span>
+            </div>
+            ${g.description ? `<div class="sg-card-desc">${escHtml(g.description)}</div>` : ''}
+            ${skillTags ? `<div class="sg-tags">${skillTags}</div>` : ''}
+            <div class="sg-card-footer">
+                <div class="sg-member-avatars">${avatarHtml}${g.member_count > 4 ? `<div class="sg-avatar" style="background:var(--parchment);color:var(--ink3);font-size:9px">+${g.member_count - 4}</div>` : ''}</div>
+                <button class="${btnClass}" ${btnDisabled} onclick="event.stopPropagation(); ${btnAction}">${btnLabel}</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function sgFilter() {
+    const q = (document.getElementById('sg-search')?.value || '').toLowerCase();
+    const tier = document.getElementById('sg-tier-filter')?.value || '';
+    const filtered = sgAllGroups.filter(g => {
+        const matchTier = !tier || g.tier === tier;
+        const matchQ = !q || g.name.toLowerCase().includes(q) ||
+            g.target_company.toLowerCase().includes(q) ||
+            (g.skills || []).some(s => s.toLowerCase().includes(q)) ||
+            (g.description || '').toLowerCase().includes(q);
+        return matchTier && matchQ;
+    });
+    sgRenderGroups(filtered);
+}
+
+async function sgLoadGroups() {
+    try {
+        const res = await fetch('/api/study_groups');
+        if (!res.ok) return;
+        const data = await res.json();
+        sgAllGroups = data.groups || [];
+        sgMyGroupIds = new Set((data.my_group_ids || []));
+        sgFilter();
+    } catch(e) {
+        document.getElementById('sg-group-grid').innerHTML =
+            `<div style="color:var(--red);padding:12px;grid-column:1/-1">Error loading groups: ${e.message}</div>`;
+    }
+}
+
+async function sgToggleMembership(groupId, isJoined) {
+    try {
+        const action = isJoined ? 'leave' : 'join';
+        const res = await fetch(`/api/study_groups/${groupId}/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            if (isJoined) sgMyGroupIds.delete(groupId);
+            else sgMyGroupIds.add(groupId);
+            // Update member count locally
+            const g = sgAllGroups.find(x => x.id === groupId);
+            if (g) g.member_count += isJoined ? -1 : 1;
+            showToast(isJoined ? 'Left group successfully.' : '🎉 Joined group! Check My Groups.');
+            sgFilter();
+            sgRenderMyGroups();
+        } else {
+            showToast('⚠ ' + (data.error || 'Action failed'));
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message);
+    }
+}
+
+function sgRenderMyGroups() {
+    const list = document.getElementById('sg-my-list');
+    const mine = sgAllGroups.filter(g => sgMyGroupIds.has(g.id));
+    if (!mine.length) {
+        list.innerHTML = `<div class="sg-empty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <p>You haven't joined any groups yet.<br/>Discover groups or create your own!</p>
+        </div>`;
+        return;
+    }
+    const modeIcons = { Online: '💻', Offline: '🏫', Hybrid: '🔀' };
+    list.innerHTML = mine.map(g => `
+        <div class="sg-my-card">
+            <div class="sg-my-icon">${modeIcons[g.study_mode] || '📚'}</div>
+            <div class="sg-my-info">
+                <div class="sg-my-name">${escHtml(g.name)}</div>
+                <div class="sg-my-sub">🏢 ${escHtml(g.target_company)} &nbsp;·&nbsp; 👥 ${g.member_count}/${g.max_members} members &nbsp;·&nbsp; <span class="sg-tier-badge ${sgTierBadgeClass(g.tier)}" style="display:inline">${escHtml(g.tier)}</span></div>
+            </div>
+            <button class="sg-leave-btn" onclick="sgToggleMembership(${g.id}, true)">Leave</button>
+        </div>
+    `).join('');
+}
+
+// ── Study Groups — tag input ──────────────────────────────────────────────────
+function sgTagKey(e) {
+    const input = e.target;
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const val = input.value.replace(',', '').trim();
+        if (val && !sgNewSkills.includes(val)) {
+            sgNewSkills.push(val);
+            sgRenderSkillTags();
+        }
+        input.value = '';
+    } else if (e.key === 'Backspace' && !input.value && sgNewSkills.length) {
+        sgNewSkills.pop();
+        sgRenderSkillTags();
+    }
+}
+function sgRenderSkillTags() {
+    const wrap = document.getElementById('sg-new-skills-wrap');
+    const input = document.getElementById('sg-new-skills-input');
+    wrap.querySelectorAll('.tag').forEach(t => t.remove());
+    sgNewSkills.forEach((t, i) => {
+        const el = document.createElement('div');
+        el.className = 'tag';
+        el.innerHTML = `<span>${escHtml(t)}</span><span class="tag-remove" onclick="sgRemoveSkill(${i})">×</span>`;
+        wrap.insertBefore(el, input);
+    });
+}
+function sgRemoveSkill(idx) { sgNewSkills.splice(idx, 1); sgRenderSkillTags(); }
+
+async function sgCreateGroup() {
+    const name    = document.getElementById('sg-new-name').value.trim();
+    const company = document.getElementById('sg-new-company').value.trim();
+    const tier    = document.getElementById('sg-new-tier').value;
+    const maxM    = parseInt(document.getElementById('sg-new-max').value) || 10;
+    const mode    = document.getElementById('sg-new-mode').value;
+    const desc    = document.getElementById('sg-new-desc').value.trim();
+
+    if (!name) { showToast('⚠ Please enter a group name.'); return; }
+    if (!company) { showToast('⚠ Please enter a target company.'); return; }
+
+    try {
+        const res = await fetch('/api/study_groups', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, target_company: company, tier, max_members: maxM, study_mode: mode, skills: sgNewSkills, description: desc })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('🎉 Group created! You\'ve been added automatically.');
+            // Reset form
+            document.getElementById('sg-new-name').value = '';
+            document.getElementById('sg-new-company').value = '';
+            document.getElementById('sg-new-desc').value = '';
+            sgNewSkills = [];
+            sgRenderSkillTags();
+            // Reload and switch to discover
+            await sgLoadGroups();
+            document.querySelector('.sg-sidebar-btn.active').classList.remove('active');
+            document.querySelector('.sg-sidebar-btn').classList.add('active');
+            sgShowPaneDirect('discover');
+        } else {
+            showToast('⚠ ' + (data.error || 'Failed to create group'));
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message);
+    }
+}
+
+function sgShowPaneDirect(name) {
+    document.querySelectorAll('.sg-pane').forEach(p => p.style.display = 'none');
+    document.getElementById('sg-pane-' + name).style.display = 'block';
+    if (name === 'discover') sgFilter();
+}
+
+// ── Group Chat Functions ──────────────────────────────────────────────────────
+
+let currentChatGroup = null;
+let chatPollingInterval = null;
+let currentUserId = null;
+
+// Store current user ID from session
+async function getCurrentUserId() {
+    if (currentUserId) return currentUserId;
+    try {
+        const res = await fetch('/api/status');
+        // We don't have user ID in status, so we'll get it from history or just use a placeholder
+        // For now, we'll extract from the username display or use a different approach
+        currentUserId = 'current'; // Placeholder
+        return currentUserId;
+    } catch(e) {
+        return null;
+    }
+}
+
+function openGroupChat(groupId, groupName, companyName) {
+    // Stop any existing polling
+    if (chatPollingInterval) {
+        clearInterval(chatPollingInterval);
+        chatPollingInterval = null;
+    }
+    
+    currentChatGroup = groupId;
+    
+    // Update chat header
+    document.getElementById('chat-group-name').textContent = groupName;
+    document.getElementById('chat-group-company').textContent = `🏢 ${companyName}`;
+    
+    // Switch to chat pane
+    document.querySelectorAll('.sg-pane').forEach(p => p.style.display = 'none');
+    document.getElementById('sg-pane-chat').style.display = 'block';
+    
+    // Load messages
+    loadGroupMessages(groupId);
+    
+    // Start polling for new messages every 3 seconds
+    chatPollingInterval = setInterval(() => {
+        if (currentChatGroup === groupId) {
+            loadGroupMessages(groupId, true); // silent refresh
+        }
+    }, 60000);
+}
+
+function sgBackToGroups() {
+    // Stop polling
+    if (chatPollingInterval) {
+        clearInterval(chatPollingInterval);
+        chatPollingInterval = null;
+    }
+    currentChatGroup = null;
+    
+    // Go back to discover pane
+    sgShowPane('discover');
+    document.querySelector('.sg-sidebar-btn.active').classList.remove('active');
+    document.querySelector('.sg-sidebar-btn').classList.add('active');
+}
+
+async function loadGroupMessages(groupId, silent = false) {
+    if (!silent) {
+        const area = document.getElementById('chat-messages-area');
+        area.innerHTML = '<div style="text-align:center; padding:40px; color:var(--ink3);"><div class="spinner" style="display:inline-block;"></div><p style="margin-top:12px;">Loading messages...</p></div>';
+    }
+    
+    try {
+        const response = await fetch(`/api/study_groups/${groupId}/messages`);
+        if (!response.ok) throw new Error('Failed to load messages');
+        
+        const data = await response.json();
+        renderChatMessages(data.messages);
+    } catch (error) {
+        if (!silent) {
+            document.getElementById('chat-messages-area').innerHTML = 
+                `<div style="color:var(--red); padding:20px; text-align:center;">Error loading messages: ${error.message}</div>`;
+        }
+    }
+}
+
+function renderChatMessages(messages) {
+    const area = document.getElementById('chat-messages-area');
+    
+    if (!messages || messages.length === 0) {
+        area.innerHTML = `
+            <div style="text-align:center; padding:60px 20px; color:var(--ink3);">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p style="margin-top:12px;">No messages yet. Be the first to say something!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Group messages by date
+    const grouped = {};
+    messages.forEach(msg => {
+        const date = new Date(msg.created_at).toLocaleDateString();
+        if (!grouped[date]) grouped[date] = [];
+        grouped[date].push(msg);
+    });
+    
+    let html = '';
+    for (const [date, msgs] of Object.entries(grouped)) {
+        html += `<div style="margin: 12px 0 8px; text-align:center;"><span style="background:var(--parchment); padding:2px 12px; border-radius:20px; font-size:11px; color:var(--ink3);">${date}</span></div>`;
+        
+        for (const msg of msgs) {
+            const isOwn = false; // We'll determine based on user_id comparison later
+            const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const avatarInitial = (msg.username || 'U').charAt(0).toUpperCase();
+            
+            let messageContent = '';
+            
+            if (msg.message_type === 'text') {
+                messageContent = `<div class="chat-message-text">${escapeHtml(msg.message)}</div>`;
+            } else if (msg.file_url) {
+                const fileIcon = msg.message_type === 'image' ? '🖼️' : (msg.message_type === 'pdf' ? '📄' : '📎');
+                messageContent = `
+                    <div class="chat-message-file" onclick="downloadFile('${msg.file_url}', '${escapeHtml(msg.file_name)}')">
+                        <div class="chat-message-file-icon">${fileIcon}</div>
+                        <div class="chat-message-file-info">
+                            <div class="chat-message-file-name">${escapeHtml(msg.file_name)}</div>
+                            <div style="font-size:10px; color:var(--ink3);">Click to download</div>
+                        </div>
+                    </div>
+                    ${msg.message ? `<div style="font-size:11px; color:var(--ink3); margin-top:4px;">${escapeHtml(msg.message)}</div>` : ''}
+                `;
+            }
+            
+            // Parse reactions
+            let reactionsHtml = '';
+            if (msg.reactions && msg.reactions !== '[]') {
+                try {
+                    const reactions = JSON.parse(msg.reactions);
+                    const reactionMap = {};
+                    reactions.forEach(r => {
+                        if (r.reaction) {
+                            if (!reactionMap[r.reaction]) reactionMap[r.reaction] = [];
+                            reactionMap[r.reaction].push(r.user_id);
+                        }
+                    });
+                    
+                    for (const [reaction, users] of Object.entries(reactionMap)) {
+                        reactionsHtml += `<div class="chat-reaction" onclick="addReaction(${msg.id}, '${reaction}')">${reaction} ${users.length}</div>`;
+                    }
+                } catch(e) {}
+            }
+            
+            html += `
+                <div class="chat-message">
+                    <div class="chat-message-avatar">${avatarInitial}</div>
+                    <div class="chat-message-content">
+                        <div class="chat-message-header">
+                            <span class="chat-message-username">${escapeHtml(msg.username)}</span>
+                            <span class="chat-message-time">${time}</span>
+                        </div>
+                        ${messageContent}
+                        ${reactionsHtml ? `<div class="chat-message-reactions">${reactionsHtml}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+    }
+    
+    area.innerHTML = html;
+    // Auto-scroll to bottom
+    area.scrollTop = area.scrollHeight;
+}
+
+async function sendGroupMessage() {
+    if (!currentChatGroup) return;
+    
+    const input = document.getElementById('chat-message-input');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Disable input while sending
+    input.disabled = true;
+    
+    try {
+        const response = await fetch(`/api/study_groups/${currentChatGroup}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: message })
+        });
+        
+        if (response.ok) {
+            input.value = '';
+            // Reload messages
+            await loadGroupMessages(currentChatGroup);
+        } else {
+            const error = await response.json();
+            showToast('⚠ ' + (error.error || 'Failed to send message'));
+        }
+    } catch (error) {
+        showToast('Network error: ' + error.message);
+    } finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
+async function uploadGroupFile(fileInput) {
+    if (!currentChatGroup) return;
+    
+    const file = fileInput.files[0];
+    if (!file) return;
+    
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('⚠ File too large. Maximum size is 10MB.');
+        fileInput.value = '';
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    showToast('📤 Uploading file...');
+    
+    try {
+        const response = await fetch(`/api/study_groups/${currentChatGroup}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            showToast('✅ File uploaded successfully!');
+            await loadGroupMessages(currentChatGroup);
+        } else {
+            const error = await response.json();
+            showToast('⚠ ' + (error.error || 'Failed to upload file'));
+        }
+    } catch (error) {
+        showToast('Network error: ' + error.message);
+    } finally {
+        fileInput.value = '';
+    }
+}
+
+async function addReaction(messageId, reaction) {
+    if (!currentChatGroup) return;
+    
+    try {
+        const response = await fetch(`/api/study_groups/${currentChatGroup}/messages/${messageId}/react`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reaction: reaction })
+        });
+        
+        if (response.ok) {
+            // Reload messages to show updated reactions
+            await loadGroupMessages(currentChatGroup);
+        }
+    } catch (error) {
+        console.error('Failed to add reaction:', error);
+    }
+}
+
+function downloadFile(fileUrl, fileName) {
+    window.open(fileUrl, '_blank');
+}
+
 
 </script>
 </body>

@@ -63,7 +63,65 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
+
+        # NEW TABLE: Study groups
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS study_groups (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                creator_id     INTEGER NOT NULL,
+                name           TEXT NOT NULL,
+                target_company TEXT NOT NULL,
+                tier           TEXT NOT NULL DEFAULT 'Tier-2 IT Services',
+                max_members    INTEGER NOT NULL DEFAULT 10,
+                study_mode     TEXT NOT NULL DEFAULT 'Online',
+                skills         TEXT NOT NULL DEFAULT '[]',
+                description    TEXT NOT NULL DEFAULT '',
+                created_at     DATETIME DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (creator_id) REFERENCES users (id)
+            )
+        """)
+
+        # NEW TABLE: Study group memberships
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS study_group_members (
+                group_id   INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                joined_at  DATETIME DEFAULT (datetime('now', 'localtime')),
+                PRIMARY KEY (group_id, user_id),
+                FOREIGN KEY (group_id) REFERENCES study_groups (id),
+                FOREIGN KEY (user_id)  REFERENCES users (id)
+            )
+        """)
         
+                # NEW TABLES: Group chat functionality
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id      INTEGER NOT NULL,
+                user_id       INTEGER NOT NULL,
+                message       TEXT NOT NULL,
+                file_name     TEXT,
+                file_url      TEXT,
+                message_type  TEXT DEFAULT 'text',
+                created_at    DATETIME DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (group_id) REFERENCES study_groups (id),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_message_reactions (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id   INTEGER NOT NULL,
+                user_id      INTEGER NOT NULL,
+                reaction     TEXT NOT NULL,
+                created_at   DATETIME DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (message_id) REFERENCES group_messages (id),
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                UNIQUE(message_id, user_id, reaction)
+            )
+        """)
+
         conn.commit()
 
 def hash_password(password: str, salt: str) -> str:
@@ -1022,6 +1080,333 @@ def get_history():
         })
     
     return jsonify({"history": history_list})
+
+
+# ─── Study Groups API ──────────────────────────────────────────────────────────
+
+@app.route("/api/study_groups", methods=["GET"])
+@login_required
+def get_study_groups():
+    """List all study groups with member counts and membership info for current user."""
+    import json as _json
+    user_id = session["user_id"]
+
+    with get_db() as conn:
+        groups = conn.execute("""
+            SELECT sg.id, sg.name, sg.target_company, sg.tier, sg.max_members,
+                   sg.study_mode, sg.skills, sg.description, sg.created_at,
+                   COUNT(sgm.user_id) AS member_count
+            FROM study_groups sg
+            LEFT JOIN study_group_members sgm ON sg.id = sgm.group_id
+            GROUP BY sg.id
+            ORDER BY sg.created_at DESC
+        """).fetchall()
+
+        my_ids_rows = conn.execute(
+            "SELECT group_id FROM study_group_members WHERE user_id = ?", (user_id,)
+        ).fetchall()
+        my_group_ids = [r["group_id"] for r in my_ids_rows]
+
+        # Fetch member initials per group (up to 4 per group)
+        member_initials_map = {}
+        for g in groups:
+            members = conn.execute("""
+                SELECT u.username FROM study_group_members sgm
+                JOIN users u ON u.id = sgm.user_id
+                WHERE sgm.group_id = ?
+                LIMIT 4
+            """, (g["id"],)).fetchall()
+            member_initials_map[g["id"]] = [u["username"][:2].upper() for u in members]
+
+    group_list = []
+    for g in groups:
+        created_display = g["created_at"][:10] if g["created_at"] else ""
+        group_list.append({
+            "id": g["id"],
+            "name": g["name"],
+            "target_company": g["target_company"],
+            "tier": g["tier"],
+            "max_members": g["max_members"],
+            "study_mode": g["study_mode"],
+            "skills": _json.loads(g["skills"]) if g["skills"] else [],
+            "description": g["description"] or "",
+            "created_display": created_display,
+            "member_count": g["member_count"],
+            "member_initials": member_initials_map.get(g["id"], []),
+        })
+
+    return jsonify({"groups": group_list, "my_group_ids": my_group_ids})
+
+
+@app.route("/api/study_groups", methods=["POST"])
+@login_required
+def create_study_group():
+    """Create a new study group and auto-join the creator."""
+    import json as _json
+    user_id = session["user_id"]
+    data = request.get_json()
+
+    name           = (data.get("name") or "").strip()
+    target_company = (data.get("target_company") or "").strip()
+    tier           = data.get("tier", "Tier-2 IT Services")
+    max_members    = int(data.get("max_members", 10))
+    study_mode     = data.get("study_mode", "Online")
+    skills         = data.get("skills", [])
+    description    = (data.get("description") or "").strip()
+
+    if not name:
+        return jsonify({"success": False, "error": "Group name is required."}), 400
+    if not target_company:
+        return jsonify({"success": False, "error": "Target company is required."}), 400
+    if max_members < 2 or max_members > 50:
+        return jsonify({"success": False, "error": "Max members must be between 2 and 50."}), 400
+
+    valid_tiers = {"Tier-1 Product", "Tier-2 Product", "Tier-2 IT Services", "PSU/Research"}
+    if tier not in valid_tiers:
+        tier = "Tier-2 IT Services"
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            """INSERT INTO study_groups (creator_id, name, target_company, tier, max_members, study_mode, skills, description)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, name, target_company, tier, max_members, study_mode, _json.dumps(skills), description)
+        )
+        group_id = cursor.lastrowid
+        # Auto-join creator
+        conn.execute(
+            "INSERT OR IGNORE INTO study_group_members (group_id, user_id) VALUES (?, ?)",
+            (group_id, user_id)
+        )
+        conn.commit()
+
+    return jsonify({"success": True, "group_id": group_id})
+
+
+@app.route("/api/study_groups/<int:group_id>/join", methods=["POST"])
+@login_required
+def join_study_group(group_id):
+    """Join a study group."""
+    user_id = session["user_id"]
+
+    with get_db() as conn:
+        group = conn.execute(
+            "SELECT id, max_members FROM study_groups WHERE id = ?", (group_id,)
+        ).fetchone()
+        if not group:
+            return jsonify({"success": False, "error": "Group not found."}), 404
+
+        count = conn.execute(
+            "SELECT COUNT(*) as c FROM study_group_members WHERE group_id = ?", (group_id,)
+        ).fetchone()["c"]
+
+        if count >= group["max_members"]:
+            return jsonify({"success": False, "error": "This group is full."}), 400
+
+        conn.execute(
+            "INSERT OR IGNORE INTO study_group_members (group_id, user_id) VALUES (?, ?)",
+            (group_id, user_id)
+        )
+        conn.commit()
+
+    return jsonify({"success": True})
+
+
+@app.route("/api/study_groups/<int:group_id>/leave", methods=["POST"])
+@login_required
+def leave_study_group(group_id):
+    """Leave a study group."""
+    user_id = session["user_id"]
+
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM study_group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id)
+        )
+        conn.commit()
+
+    return jsonify({"success": True})
+
+# ─── Group Chat API ──────────────────────────────────────────────────────────
+
+@app.route("/api/study_groups/<int:group_id>/messages", methods=["GET"])
+@login_required
+def get_group_messages(group_id):
+    """Get all messages for a specific study group."""
+    user_id = session["user_id"]
+    
+    # Check if user is a member of this group
+    with get_db() as conn:
+        membership = conn.execute(
+            "SELECT 1 FROM study_group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id)
+        ).fetchone()
+        
+        if not membership:
+            return jsonify({"error": "You are not a member of this group"}), 403
+        
+        # Fetch messages with user info
+        messages = conn.execute("""
+            SELECT gm.id, gm.message, gm.file_name, gm.file_url, gm.message_type, 
+                   gm.created_at, u.id as user_id, u.username,
+                   (SELECT json_group_array(json_object('reaction', reaction, 'user_id', user_id)) 
+                    FROM group_message_reactions 
+                    WHERE message_id = gm.id) as reactions
+            FROM group_messages gm
+            JOIN users u ON u.id = gm.user_id
+            WHERE gm.group_id = ?
+            ORDER BY gm.created_at ASC
+        """, (group_id,)).fetchall()
+    
+    messages_list = []
+    for msg in messages:
+        messages_list.append({
+            "id": msg["id"],
+            "message": msg["message"],
+            "file_name": msg["file_name"],
+            "file_url": msg["file_url"],
+            "message_type": msg["message_type"],
+            "created_at": msg["created_at"],
+            "user_id": msg["user_id"],
+            "username": msg["username"],
+            "reactions": msg["reactions"] if msg["reactions"] else "[]"
+        })
+    
+    return jsonify({"messages": messages_list})
+
+
+@app.route("/api/study_groups/<int:group_id>/messages", methods=["POST"])
+@login_required
+def send_group_message(group_id):
+    """Send a text message to a study group."""
+    user_id = session["user_id"]
+    data = request.get_json()
+    message = data.get("message", "").strip()
+    
+    if not message:
+        return jsonify({"error": "Message cannot be empty"}), 400
+    
+    # Check if user is a member
+    with get_db() as conn:
+        membership = conn.execute(
+            "SELECT 1 FROM study_group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id)
+        ).fetchone()
+        
+        if not membership:
+            return jsonify({"error": "You are not a member of this group"}), 403
+        
+        conn.execute(
+            "INSERT INTO group_messages (group_id, user_id, message, message_type) VALUES (?, ?, ?, ?)",
+            (group_id, user_id, message, "text")
+        )
+        conn.commit()
+    
+    return jsonify({"success": True})
+
+
+@app.route("/api/study_groups/<int:group_id>/upload", methods=["POST"])
+@login_required
+def upload_group_file(group_id):
+    """Upload a file to a study group."""
+    import uuid
+    user_id = session["user_id"]
+    
+    # Check if user is a member
+    with get_db() as conn:
+        membership = conn.execute(
+            "SELECT 1 FROM study_group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id)
+        ).fetchone()
+        
+        if not membership:
+            return jsonify({"error": "You are not a member of this group"}), 403
+    
+    # Check if file was uploaded
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    # Create uploads directory if it doesn't exist
+    UPLOAD_FOLDER = "group_uploads"
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    
+    # Generate unique filename
+    original_filename = file.filename
+    file_extension = original_filename.rsplit('.', 1)[-1].lower() if '.' in original_filename else ''
+    unique_filename = f"{uuid.uuid4().hex}.{file_extension}" if file_extension else uuid.uuid4().hex
+    file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+    
+    # Save file
+    file.save(file_path)
+    file_url = f"/uploads/{unique_filename}"
+    
+    # Get file type
+    file_type = "document"
+    if file_extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+        file_type = "image"
+    elif file_extension in ['pdf']:
+        file_type = "pdf"
+    elif file_extension in ['mp4', 'webm', 'mov']:
+        file_type = "video"
+    
+    # Store message with file info
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO group_messages (group_id, user_id, message, file_name, file_url, message_type) 
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (group_id, user_id, f"Shared a file: {original_filename}", original_filename, file_url, file_type)
+        )
+        conn.commit()
+    
+    return jsonify({"success": True, "file_url": file_url, "file_name": original_filename})
+
+
+@app.route("/api/study_groups/<int:group_id>/messages/<int:message_id>/react", methods=["POST"])
+@login_required
+def add_message_reaction(group_id, message_id):
+    """Add or remove a reaction from a message."""
+    user_id = session["user_id"]
+    data = request.get_json()
+    reaction = data.get("reaction", "")
+    
+    if not reaction:
+        return jsonify({"error": "Reaction is required"}), 400
+    
+    with get_db() as conn:
+        # Check if reaction already exists
+        existing = conn.execute(
+            "SELECT 1 FROM group_message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?",
+            (message_id, user_id, reaction)
+        ).fetchone()
+        
+        if existing:
+            # Remove reaction if it exists (toggle off)
+            conn.execute(
+                "DELETE FROM group_message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?",
+                (message_id, user_id, reaction)
+            )
+        else:
+            # Add new reaction
+            conn.execute(
+                "INSERT INTO group_message_reactions (message_id, user_id, reaction) VALUES (?, ?, ?)",
+                (message_id, user_id, reaction)
+            )
+        conn.commit()
+    
+    return jsonify({"success": True})
+
+
+# Serve uploaded files
+@app.route("/uploads/<filename>")
+@login_required
+def uploaded_file(filename):
+    """Serve uploaded files."""
+    from flask import send_from_directory
+    return send_from_directory("group_uploads", filename)
 
 
 if __name__ == "__main__":
