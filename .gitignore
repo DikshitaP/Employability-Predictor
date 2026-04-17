@@ -3,11 +3,16 @@ venv/
 
 # Ignore model files
 *.pt
+*.pkl
 
 # Python cache
 __pycache__/
 *.pyc
+.cache/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+#db
+*.db
