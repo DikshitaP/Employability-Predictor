@@ -10,9 +10,6 @@ from functools import wraps
 from datetime import timedelta
 
 app = Flask(__name__)
-with app.app_context():
-    init_db()
-    load_models()
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(hours=8)
 
@@ -316,6 +313,10 @@ def load_models():
     except Exception as e:
         load_error = str(e)
         print(f"[BOOT] ❌ Error loading models: {e}")
+
+with app.app_context():
+    init_db()
+    load_models()
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
 def compute_skill_match(student_skills: list, required_skills: list) -> float:
