@@ -316,7 +316,6 @@ def load_models():
 
 with app.app_context():
     init_db()
-    load_models()
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
 def compute_skill_match(student_skills: list, required_skills: list) -> float:
@@ -587,7 +586,7 @@ def company_info():
 @login_required
 def predict():
     if not models_loaded:
-        return jsonify({"error": f"Models not loaded. {load_error or ''}"}), 503
+        load_models()
 
     data = request.get_json()
     mode = data.get("mode", "company")
@@ -1415,5 +1414,4 @@ def uploaded_file(filename):
 
 if __name__ == "__main__":
     init_db()
-    load_models()
     app.run(host="0.0.0.0", port=5000)
