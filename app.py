@@ -10,6 +10,9 @@ from functools import wraps
 from datetime import timedelta
 
 app = Flask(__name__)
+with app.app_context():
+    init_db()
+    load_models()
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(hours=8)
 
@@ -1412,4 +1415,4 @@ def uploaded_file(filename):
 if __name__ == "__main__":
     init_db()
     load_models()
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000)
